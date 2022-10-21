@@ -19,6 +19,10 @@ from patterns import (
     create_indicator_pattern_url,
 )
 
+
+import string
+import random
+
 class Observation(NamedTuple):
     """Result from making an observable"""
 
@@ -76,21 +80,16 @@ class Connector:
         while True:
             dataArray, err = self.readDataFromFile()
             if err is None:
-                now = datetime.now(pytz.UTC)
-                friendly_name = "vncert run @ " + now.astimezone(pytz.UTC).isoformat()
-                work_id = self.helper.api.work.initiate_work(
-                    self.helper.connect_id, friendly_name
-                )
                 bundle_objects = []
                 for urlData in dataArray:
                     obs1 = self._create_url_observable(urlData['url'], urlData['description'])
                     bundle_objects.extend(filter(None, [*obs1]))
-
                     hostname = urlparse(urlData['url']).hostname
                     if validators.domain(hostname):
                         try:
                             obs2 = self._create_domain_observable(hostname, urlData['description'])
                         except Exception as exp:
+                            raise exp
                             continue
                         bundle_objects.extend(filter(None, [*obs2]))
 
@@ -98,12 +97,15 @@ class Connector:
                             obs1, obs2, urlData['description']
                         )
                         bundle_objects.extend(rels)
-    
                 if len(bundle_objects) == 0:
                     self.helper.log_info("No objects to bundle")
                     time.sleep(10)
                     continue
-
+                now = datetime.now(pytz.UTC)
+                friendly_name = "vncert run @ " + now.astimezone(pytz.UTC).isoformat()
+                work_id = self.helper.api.work.initiate_work(
+                    self.helper.connect_id, friendly_name
+                )
                 bundle = stix2.Bundle(objects=bundle_objects, allow_custom=True).serialize()
                 self.helper.log_info("Sending event STIX2 bundle")
 
@@ -114,13 +116,37 @@ class Connector:
                 )
             time.sleep(10)
 
+    def phakeData(self):
+        domains = [
+            "http://phakebook.com/",
+            "https://youtobe.me/",
+            "http://g00gl3.xyz/",
+            "http://0nlyPie.us/",
+            "http://honpub.com/",
+            "http://instakilogam.com/",
+            "https://notDomain.tar.gz/",
+            "https://bet8888.lostmonney/"
+        ]
+        dataArr = []
+        while len(dataArr) < 10:
+            domain = domains[random.randint(0, 7)]
+            N = random.randint(10, 100)
+            res = ''.join(random.choices(string.ascii_uppercase + string.digits, k=N))
+            dataArr.append({
+                'url': domain + str(res),
+                'description': "Demo data"
+            })
+        return dataArr
+
     def readDataFromFile(self):
         try:
             filePath = os.path.join(self.config['api']['api_data_path'], self.config['connector']['id'])
             dataFile = open(filePath, "r+")
-            if os.path.getsize(filePath) == 0:
-                return [], None
-            dataArray = json.loads(dataFile.read())
+            # if os.path.getsize(filePath) == 0:
+            #     return [], None
+            # dataArray = json.loads(dataFile.read())
+            dataArray = self.phakeData()
+            print (dataArray)
             dataFile.seek(0)
             dataFile.truncate()
             return dataArray, None
