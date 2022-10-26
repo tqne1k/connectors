@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import yaml
 
 from flask import Flask, request
 from flask_restful import Resource, Api
@@ -16,7 +17,12 @@ app = Flask(__name__)
 
 api = Api(app)
 
-API_URL = "http://localhost:4000"
+config_file_path = os.path.dirname(os.path.abspath(__file__)) + "/config.yml"
+config = (
+    yaml.load(open(config_file_path), Loader=yaml.FullLoader)
+    if os.path.isfile(config_file_path)
+    else {}
+)
 
 def getToken():
     try:
@@ -36,7 +42,7 @@ def auth_required(f):
         if not token:
             return {'message': "unauthorized!"}, 401  
         try:
-            opencti_api_client = OpenCTIApiClient(API_URL, token)
+            opencti_api_client = OpenCTIApiClient(config['opencti']['url'], token)
         except Exception as exp:
             return {'message': "unauthorized!"}, 401  
         return f(*args, **kwargs)
@@ -50,7 +56,7 @@ class PushData(Resource):
             data = request.get_json()     
             if type(data) != list:
                 return {'message': 'data is not list format!'}, 400
-            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), getToken())
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", getToken())
             print (path)
             if not os.path.exists(path):
                 f = open(path, "w+")
@@ -64,7 +70,7 @@ class PushData(Resource):
                 print ("Can not read data file")
                 listData = []
             listData.extend(data)
-            dataFilePointer = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), getToken()), "w")
+            dataFilePointer = open(path, "w")
             dataFilePointer.write(json.dumps(listData))
             dataFilePointer.close()
             return {'message': "suceess!"}, 201
@@ -77,12 +83,12 @@ class PushFileData(Resource):
     @auth_required
     def post(self):
         try:
-            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), getToken())
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", getToken())
             fileUpload = request.files['file-data']
             uniqueName = str(time.time()) + secure_filename(fileUpload.filename)
             fileUpload.save(os.path.join(os.path.dirname(os.path.abspath(__file__)), uniqueName))
 
-            dataFilePointer = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), uniqueName))
+            dataFilePointer = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", uniqueName))
             data = dataFilePointer.read()
             dataFilePointer.close()
             try:
@@ -133,4 +139,4 @@ api.add_resource(GetData, '/get-data')
 api.add_resource(GetFileData, '/get-file-stix2-data')
   
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port="5000", debug = True)
+    app.run(host="0.0.0.0", port="5005", debug = True)
