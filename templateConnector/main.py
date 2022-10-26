@@ -22,6 +22,10 @@ from patterns import (
 
 import string
 import random
+import ssl
+import urllib.request
+import certifi
+import csv
 
 class Observation(NamedTuple):
     """Result from making an observable"""
@@ -39,7 +43,6 @@ class Connector:
             else {}
         )
         self.helper = OpenCTIConnectorHelper(self.config)
-        self._default_labels = ["Phishing", "phishfeed"]
         self.cve_interval = get_config_variable(
             "TEMPLATE_ATTRIBUTE", ["template", "attribute"], self.config, True
         )
@@ -73,7 +76,7 @@ class Connector:
             "URLSCAN_UPDATE_EXISTING_DATA",
             ["urlscan", "update_existing_data"],
             self.config,
-            default=True,
+            default=False,
         ) 
 
     def run(self):
@@ -81,22 +84,41 @@ class Connector:
             dataArray, err = self.readDataFromFile()
             if err is None:
                 bundle_objects = []
-                for urlData in dataArray:
-                    obs1 = self._create_url_observable(urlData['url'], urlData['description'])
-                    bundle_objects.extend(filter(None, [*obs1]))
-                    hostname = urlparse(urlData['url']).hostname
-                    if validators.domain(hostname):
-                        try:
-                            obs2 = self._create_domain_observable(hostname, urlData['description'])
-                        except Exception as exp:
-                            raise exp
-                            continue
-                        bundle_objects.extend(filter(None, [*obs2]))
-
-                        rels = self._create_observation_relationships(
-                            obs1, obs2, urlData['description']
-                        )
-                        bundle_objects.extend(rels)
+                for _data in dataArray:
+                    try:
+                        if validators.url(_data['value']):
+                            if type(_data['label']) != list:
+                                continue
+                            obs1 = self._create_url_observable(
+                                _data['value'], _data['description'], _data['label']
+                            )
+                            bundle_objects.extend(filter(None, [*obs1]))
+                            hostname = urlparse(_data['value']).hostname
+                            obs2 = self._create_domain_observable(
+                                hostname, _data['description'], _data['label']
+                            )
+                            bundle_objects.extend(filter(None, [*obs2]))
+                            rels = self._create_observation_relationships(
+                                obs1, obs2, _data['description'], _data['label']
+                            )
+                            bundle_objects.extend(rels)
+                        elif validators.domain(_data['value']):
+                            if type(_data['label']) != list:
+                                continue
+                            obs = self._create_domain_observable(
+                                _data['value'], _data['description'], _data['label']
+                            )
+                            bundle_objects.extend(filter(None, [*obs]))
+                        elif validators.ipv4(_data['value']):
+                            if type(_data['label']) != list:
+                                continue
+                            # TODO
+                        elif validators.ipv6(_data['value']):
+                            if type(_data['label']) != list:
+                                continue
+                            # TODO
+                    except:
+                        continue
                 if len(bundle_objects) == 0:
                     self.helper.log_info("No objects to bundle")
                     time.sleep(10)
@@ -116,37 +138,16 @@ class Connector:
                 )
             time.sleep(10)
 
-    def phakeData(self):
-        domains = [
-            "http://phakebook.com/",
-            "https://youtobe.me/",
-            "http://g00gl3.xyz/",
-            "http://0nlyPie.us/",
-            "http://honpub.com/",
-            "http://instakilogam.com/",
-            "https://notDomain.tar.gz/",
-            "https://bet8888.lostmonney/"
-        ]
-        dataArr = []
-        while len(dataArr) < 10:
-            domain = domains[random.randint(0, 7)]
-            N = random.randint(10, 100)
-            res = ''.join(random.choices(string.ascii_uppercase + string.digits, k=N))
-            dataArr.append({
-                'url': domain + str(res),
-                'description': "Demo data"
-            })
-        return dataArr
-
     def readDataFromFile(self):
         try:
-            filePath = os.path.join(self.config['api']['api_data_path'], self.config['connector']['id'])
+            filePath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", self.config['opencti']['token'])
+            if not os.path.exists(filePath):
+                f = open(filePath, "w+")
+                f.close()
             dataFile = open(filePath, "r+")
-            # if os.path.getsize(filePath) == 0:
-            #     return [], None
-            # dataArray = json.loads(dataFile.read())
-            dataArray = self.phakeData()
-            print (dataArray)
+            if os.path.getsize(filePath) == 0:
+                return [], None
+            dataArray = json.loads(dataFile.read())
             dataFile.seek(0)
             dataFile.truncate()
             return dataArray, None
@@ -162,12 +163,14 @@ class Connector:
         target: Observation,
         source: Observation,
         description: str,
+        label: list,
     ) -> Iterator[stix2.Relationship]:
         """
         Create relationships between two observations
         :param target: The target observation
         :param source: The source Observation
         :param description: Description of the relationship
+        :param label: Label of the relationship
         :return: Any relationships created
         """
         if source.observable and target.observable:
@@ -176,6 +179,7 @@ class Connector:
                 source_id=source.observable.id,
                 target_id=target.observable.id,
                 description=description,
+                label=label,
             )
 
         if source.indicator and target.indicator:
@@ -184,6 +188,7 @@ class Connector:
                 source_id=source.indicator.id,
                 target_id=target.indicator.id,
                 description=description,
+                label=label,
             )
 
     def _create_indicator(
@@ -191,11 +196,13 @@ class Connector:
         value: str,
         pattern: IndicatorPattern,
         description: str,
+        label: list,
     ) -> stix2.Indicator:
         """Create an indicator
         :param value: Observable value
         :param pattern: Indicator pattern
         :param description: Description
+        :param label: Label of the relationship
         :return: An indicator
         """
         return stix2.Indicator(
@@ -203,7 +210,7 @@ class Connector:
             pattern=pattern.pattern,
             name=value,
             description=description,
-            labels=self._default_labels,
+            labels=label,
             confidence=self.helper.connect_confidence_level,
             object_marking_refs=[self._default_tlp],
             custom_properties=dict(
@@ -216,10 +223,12 @@ class Connector:
         self,
         value: str,
         description: str,
+        label: list,
     ) -> Observation:
         """Create an observation based on a domain name
         :param value: Domain name
         :param description: Description
+        :param label: Label of the relationship
         :return: An observation
         """
         sco = stix2.DomainName(
@@ -228,7 +237,7 @@ class Connector:
             custom_properties=dict(
                 x_opencti_created_by_ref=self._identity["standard_id"],
                 x_opencti_description=description,
-                x_opencti_labels=self._default_labels,
+                x_opencti_labels=label,
                 x_opencti_score=self.helper.connect_confidence_level,
             ),
         )
@@ -241,6 +250,7 @@ class Connector:
                 value=value,
                 pattern=pattern,
                 description=description,
+                label=label,
             )
 
             sro = self._create_relationship(
@@ -248,6 +258,7 @@ class Connector:
                 source_id=sdo.id,
                 target_id=sco.id,
                 description=description,
+                label=label,
             )
 
         return Observation(sco, sdo, sro)
@@ -258,6 +269,7 @@ class Connector:
         source_id: str,
         target_id: str,
         description: str,
+        label: list,
     ) -> stix2.Relationship:
         """Create a relationship
         :param rel_type: Relationship type
@@ -277,7 +289,7 @@ class Connector:
             created_by_ref=created_by_ref,
             confidence=confidence,
             description=description,
-            labels=self._default_labels,
+            labels=label,
             object_marking_refs=[self._default_tlp],
         )
 
@@ -285,6 +297,7 @@ class Connector:
             self,
             value: str,
             description: str,
+            label: list,
         ) -> Observation:
             """Create an observation based on a URL
             :param value: URL value
@@ -297,7 +310,7 @@ class Connector:
                 custom_properties=dict(
                     x_opencti_created_by_ref=self._identity["standard_id"],
                     x_opencti_description=description,
-                    x_opencti_labels=self._default_labels,
+                    x_opencti_labels=label,
                     x_opencti_score=self.helper.connect_confidence_level,
                 ),
             )
@@ -309,6 +322,7 @@ class Connector:
                     value=value,
                     pattern=pattern,
                     description=description,
+                    label=label,
                 )
 
                 sro = self._create_relationship(
@@ -316,6 +330,7 @@ class Connector:
                     source_id=sdo.id,
                     target_id=sco.id,
                     description=description,
+                    label=label,
                 )
 
             return Observation(sco, sdo, sro)
