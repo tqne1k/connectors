@@ -3,7 +3,7 @@ import time
 import json
 import yaml
 
-from flask import Flask, request
+from flask import Flask, request, send_file
 from flask_restful import Resource, Api
 from pycti import OpenCTIApiClient
 
@@ -27,6 +27,7 @@ config = (
 def getToken():
     try:
         headerParam = request.headers.get('authorization')
+        print (headerParam)
         token = headerParam.split(" ")
         if token[0] != "Bearer":
             return False
@@ -44,6 +45,7 @@ def auth_required(f):
         try:
             opencti_api_client = OpenCTIApiClient(config['opencti']['url'], token)
         except Exception as exp:
+            raise (exp)
             return {'message': "unauthorized!"}, 401  
         return f(*args, **kwargs)
     return decorated_function
@@ -150,12 +152,12 @@ class GetData(Resource):
             else:
                 search_data = args_param.get('search')
         except Exception as exp:
-            return  {'message': "failed!"}, 401  
+            return  {'message': "failed!"}, 500  
 
         # Core data
         try:
-            opencti_api_client = OpenCTIApiClient(config['opencti']['url'], config['opencti']['token'])
-            observables = opencti_api_client.stix_cyber_observable.list(search=str(search_data), getAll=True, filters=[param])
+            opencti_api_client = OpenCTIApiClient(config['opencti']['url'], getToken())
+            observables = opencti_api_client.stix_cyber_observable.list(search=str(search_data), getAll=False, filters=[param], withPagination=True)
 
             data_json = json.dumps(observables, indent=4)
             data = json.loads(data_json)
@@ -165,6 +167,7 @@ class GetData(Resource):
 
 class GetFileData(Resource):
 
+    @auth_required
     def get(self):
         try:
             args_param = request.args
@@ -197,7 +200,7 @@ class GetFileData(Resource):
 
         # Core data
         try:
-            opencti_api_client = OpenCTIApiClient(config['opencti']['url'], config['opencti']['token'])
+            opencti_api_client = OpenCTIApiClient(config['opencti']['url'], getToken())
             observables = opencti_api_client.stix_cyber_observable.list(search=str(search_data), getAll=True, filters=[param])
             data_json = json.dumps(observables, indent=4)
             # Write the bundle

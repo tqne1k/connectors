@@ -86,27 +86,29 @@ class Connector:
                 bundle_objects = []
                 for _data in dataArray:
                     try:
+                        if "score" not in _data:
+                            _data['score'] = self.helper.connect_confidence_level
                         if validators.url(_data['value']):
                             if type(_data['label']) != list:
                                 continue
                             obs1 = self._create_url_observable(
-                                _data['value'], _data['description'], _data['label']
+                                _data['value'], _data['description'], _data['label'], _data['score']
                             )
                             bundle_objects.extend(filter(None, [*obs1]))
                             hostname = urlparse(_data['value']).hostname
                             obs2 = self._create_domain_observable(
-                                hostname, _data['description'], _data['label']
+                                hostname, _data['description'], _data['label'], _data['score']
                             )
                             bundle_objects.extend(filter(None, [*obs2]))
                             rels = self._create_observation_relationships(
-                                obs1, obs2, _data['description'], _data['label']
+                                obs1, obs2, _data['description'], _data['label'], _data['score']
                             )
                             bundle_objects.extend(rels)
                         elif validators.domain(_data['value']):
                             if type(_data['label']) != list:
                                 continue
                             obs = self._create_domain_observable(
-                                _data['value'], _data['description'], _data['label']
+                                _data['value'], _data['description'], _data['label'], _data['score']
                             )
                             bundle_objects.extend(filter(None, [*obs]))
                         elif validators.ipv4(_data['value']):
@@ -128,6 +130,7 @@ class Connector:
                 work_id = self.helper.api.work.initiate_work(
                     self.helper.connect_id, friendly_name
                 )
+                print (bundle_objects)
                 bundle = stix2.Bundle(objects=bundle_objects, allow_custom=True).serialize()
                 self.helper.log_info("Sending event STIX2 bundle")
 
@@ -164,6 +167,7 @@ class Connector:
         source: Observation,
         description: str,
         label: list,
+        score: int,
     ) -> Iterator[stix2.Relationship]:
         """
         Create relationships between two observations
@@ -180,6 +184,7 @@ class Connector:
                 target_id=target.observable.id,
                 description=description,
                 label=label,
+                score=score,
             )
 
         if source.indicator and target.indicator:
@@ -189,6 +194,7 @@ class Connector:
                 target_id=target.indicator.id,
                 description=description,
                 label=label,
+                score=score,
             )
 
     def _create_indicator(
@@ -197,6 +203,7 @@ class Connector:
         pattern: IndicatorPattern,
         description: str,
         label: list,
+        score: int,
     ) -> stix2.Indicator:
         """Create an indicator
         :param value: Observable value
@@ -211,10 +218,10 @@ class Connector:
             name=value,
             description=description,
             labels=label,
-            confidence=self.helper.connect_confidence_level,
+            confidence=score,
             object_marking_refs=[self._default_tlp],
             custom_properties=dict(
-                x_opencti_score=self.helper.connect_confidence_level,
+                x_opencti_score=score,
                 x_opencti_main_observable_type=pattern.main_observable_type,
             ),
         )
@@ -224,6 +231,7 @@ class Connector:
         value: str,
         description: str,
         label: list,
+        score: int,
     ) -> Observation:
         """Create an observation based on a domain name
         :param value: Domain name
@@ -238,7 +246,7 @@ class Connector:
                 x_opencti_created_by_ref=self._identity["standard_id"],
                 x_opencti_description=description,
                 x_opencti_labels=label,
-                x_opencti_score=self.helper.connect_confidence_level,
+                x_opencti_score=score,
             ),
         )
 
@@ -251,6 +259,7 @@ class Connector:
                 pattern=pattern,
                 description=description,
                 label=label,
+                score=score,
             )
 
             sro = self._create_relationship(
@@ -259,6 +268,7 @@ class Connector:
                 target_id=sco.id,
                 description=description,
                 label=label,
+                score=score,
             )
 
         return Observation(sco, sdo, sro)
@@ -270,6 +280,7 @@ class Connector:
         target_id: str,
         description: str,
         label: list,
+        score: int,
     ) -> stix2.Relationship:
         """Create a relationship
         :param rel_type: Relationship type
@@ -278,7 +289,7 @@ class Connector:
         :param description: Description
         :return: A relationship
         """
-        confidence = self.helper.connect_confidence_level
+        confidence = score
         created_by_ref = self._identity["standard_id"]
 
         return stix2.Relationship(
@@ -298,6 +309,7 @@ class Connector:
             value: str,
             description: str,
             label: list,
+            score: int,
         ) -> Observation:
             """Create an observation based on a URL
             :param value: URL value
@@ -311,7 +323,7 @@ class Connector:
                     x_opencti_created_by_ref=self._identity["standard_id"],
                     x_opencti_description=description,
                     x_opencti_labels=label,
-                    x_opencti_score=self.helper.connect_confidence_level,
+                    x_opencti_score=score,
                 ),
             )
             sdo = None
@@ -323,6 +335,7 @@ class Connector:
                     pattern=pattern,
                     description=description,
                     label=label,
+                    score=score,
                 )
 
                 sro = self._create_relationship(
@@ -331,6 +344,7 @@ class Connector:
                     target_id=sco.id,
                     description=description,
                     label=label,
+                    score=score,
                 )
 
             return Observation(sco, sdo, sro)
