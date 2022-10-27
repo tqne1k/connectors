@@ -27,7 +27,6 @@ config = (
 def getToken():
     try:
         headerParam = request.headers.get('authorization')
-        print (headerParam)
         token = headerParam.split(" ")
         if token[0] != "Bearer":
             return False
@@ -127,24 +126,28 @@ class GetData(Resource):
     @auth_required
     def get(self):
         try:
+            param = []
             args_param = request.args
             # start time to time now
             if args_param.get('start-time') == None:
-                param = None
+                param_1 = None
             else:
-                param = {"key": "created_at", "values": [f"{args_param.get('start-time')}"], "operator": "gt"}
+                param_1 = {"key": "created_at", "values": [f"{args_param.get('start-time')}"], "operator": "gt"}
+                param.append(param_1)
             
             # score >
             if args_param.get('score') == None:
                 param = None
             else:
-                param = {"key": "x_opencti_score", "values": [f"{args_param.get('score')}"], "operator": "gt"}
+                param_2 = {"key": "x_opencti_score", "values": [f"{args_param.get('score')}"], "operator": "gt"}
+                param.append(param_2)
 
             # score <= 
             if args_param.get('score_lte') == None:
-                param = None
+                param_3 = None
             else:
-                param = {"key": "x_opencti_score", "values": [f"{args_param.get('score-lte')}"], "operator": "lte"}
+                param_3 = {"key": "x_opencti_score", "values": [f"{args_param.get('score-lte')}"], "operator": "lte"}
+                param.append(param_3)
             
             # search
             if args_param.get('search') == None:
@@ -157,7 +160,7 @@ class GetData(Resource):
         # Core data
         try:
             opencti_api_client = OpenCTIApiClient(config['opencti']['url'], getToken())
-            observables = opencti_api_client.stix_cyber_observable.list(search=str(search_data), getAll=False, filters=[param], withPagination=True)
+            observables = opencti_api_client.stix_cyber_observable.list(search=str(search_data), getAll=False, filters=param, withPagination=True)
 
             data_json = json.dumps(observables, indent=4)
             data = json.loads(data_json)
@@ -170,24 +173,28 @@ class GetFileData(Resource):
     @auth_required
     def get(self):
         try:
+            param = []
             args_param = request.args
             # start time to time now
             if args_param.get('start-time') == None:
-                param = None
+                param_1 = None
             else:
-                param = {"key": "created_at", "values": [f"{args_param.get('start-time')}"], "operator": "gt"}
+                param_1 = {"key": "created_at", "values": [f"{args_param.get('start-time')}"], "operator": "gt"}
+                param.append(param_1)
             
             # score >
             if args_param.get('score') == None:
                 param = None
             else:
-                param = {"key": "x_opencti_score", "values": [f"{args_param.get('score')}"], "operator": "gt"}
+                param_2 = {"key": "x_opencti_score", "values": [f"{args_param.get('score')}"], "operator": "gt"}
+                param.append(param_2)
 
             # score <= 
             if args_param.get('score_lte') == None:
-                param = None
+                param_3 = None
             else:
-                param = {"key": "x_opencti_score", "values": [f"{args_param.get('score-lte')}"], "operator": "lte"}
+                param_3 = {"key": "x_opencti_score", "values": [f"{args_param.get('score-lte')}"], "operator": "lte"}
+                param.append(param_3)
             
             # search
             if args_param.get('search') == None:
@@ -195,13 +202,12 @@ class GetFileData(Resource):
             else:
                 search_data = args_param.get('search')
         except Exception as exp:
-            print (exp)
             return  {'message': "failed!"}, 401   
 
         # Core data
         try:
             opencti_api_client = OpenCTIApiClient(config['opencti']['url'], getToken())
-            observables = opencti_api_client.stix_cyber_observable.list(search=str(search_data), getAll=True, filters=[param])
+            observables = opencti_api_client.stix_cyber_observable.list(search=str(search_data), getAll=True, filters=param)
             data_json = json.dumps(observables, indent=4)
             # Write the bundle
             f = open("data.json", "w")
