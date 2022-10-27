@@ -122,15 +122,94 @@ class PushFileData(Resource):
             return {'message': "failed!"}, 500 
 
 class GetData(Resource):
-    # @auth_required
+    @auth_required
     def get(self):
+        try:
+            args_param = request.args
+            # start time to time now
+            if args_param.get('start-time') == None:
+                param = None
+            else:
+                param = {"key": "created_at", "values": [f"{args_param.get('start-time')}"], "operator": "gt"}
+            
+            # score >
+            if args_param.get('score') == None:
+                param = None
+            else:
+                param = {"key": "x_opencti_score", "values": [f"{args_param.get('score')}"], "operator": "gt"}
 
-        return {'message': "suceess!"}, 201 
+            # score <= 
+            if args_param.get('score_lte') == None:
+                param = None
+            else:
+                param = {"key": "x_opencti_score", "values": [f"{args_param.get('score-lte')}"], "operator": "lte"}
+            
+            # search
+            if args_param.get('search') == None:
+                search_data = ''
+            else:
+                search_data = args_param.get('search')
+        except Exception as exp:
+            return  {'message': "failed!"}, 401  
+
+        # Core data
+        try:
+            opencti_api_client = OpenCTIApiClient(config['opencti']['url'], config['opencti']['token'])
+            observables = opencti_api_client.stix_cyber_observable.list(search=str(search_data), getAll=True, filters=[param])
+
+            data_json = json.dumps(observables, indent=4)
+            data = json.loads(data_json)
+            return {'data': data}, 201
+        except Exception as exp:
+            return  {'message': "failed!"}, 500
 
 class GetFileData(Resource):
 
     def get(self):
-        return {'message': "suceess!"}, 201 
+        try:
+            args_param = request.args
+            # start time to time now
+            if args_param.get('start-time') == None:
+                param = None
+            else:
+                param = {"key": "created_at", "values": [f"{args_param.get('start-time')}"], "operator": "gt"}
+            
+            # score >
+            if args_param.get('score') == None:
+                param = None
+            else:
+                param = {"key": "x_opencti_score", "values": [f"{args_param.get('score')}"], "operator": "gt"}
+
+            # score <= 
+            if args_param.get('score_lte') == None:
+                param = None
+            else:
+                param = {"key": "x_opencti_score", "values": [f"{args_param.get('score-lte')}"], "operator": "lte"}
+            
+            # search
+            if args_param.get('search') == None:
+                search_data = ''
+            else:
+                search_data = args_param.get('search')
+        except Exception as exp:
+            print (exp)
+            return  {'message': "failed!"}, 401   
+
+        # Core data
+        try:
+            opencti_api_client = OpenCTIApiClient(config['opencti']['url'], config['opencti']['token'])
+            observables = opencti_api_client.stix_cyber_observable.list(search=str(search_data), getAll=True, filters=[param])
+            data_json = json.dumps(observables, indent=4)
+            # Write the bundle
+            f = open("data.json", "w")
+            f.write(data_json)
+            f.close()
+            path = 'data.json'
+
+            return send_file(path, mimetype='application/json', as_attachment=True, conditional=True) 
+            
+        except Exception as exp:
+            return  {'message': "failed!"}, 500  
 
   
 api.add_resource(PushData, '/push-data')  
