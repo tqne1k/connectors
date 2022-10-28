@@ -86,11 +86,21 @@ class Connector:
                 bundle_objects = []
                 for _data in dataArray:
                     try:
-                        if "score" not in _data:
+                        if len('value') > 512 or len('description') > 1024:
+                            continue
+                        if "score" not in _data or _data['score'] < 0 or _data['score'] > 100:
                             _data['score'] = self.helper.connect_confidence_level
-                        if validators.url(_data['value']):
-                            if type(_data['label']) != list:
+                        if type(_data['label']) != list:
+                            continue
+                        else:
+                            errFlag = False
+                            for label in _data['label']:
+                                if label not in ["Cờ bạc", "Tình dục", "Chất kích thích", "Vũ khí nguy hiểm", "Bạo lực"]:
+                                    errFlag = True
+                            if errFlag:
                                 continue
+                            
+                        if validators.url(_data['value']):
                             obs1 = self._create_url_observable(
                                 _data['value'], _data['description'], _data['label'], _data['score']
                             )
@@ -130,7 +140,6 @@ class Connector:
                 work_id = self.helper.api.work.initiate_work(
                     self.helper.connect_id, friendly_name
                 )
-                print (bundle_objects)
                 bundle = stix2.Bundle(objects=bundle_objects, allow_custom=True).serialize()
                 self.helper.log_info("Sending event STIX2 bundle")
 

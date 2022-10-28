@@ -2,6 +2,8 @@ import os
 import time
 import json
 import yaml
+import dateutil
+import re
 
 from flask import Flask, request, send_file
 from flask_restful import Resource, Api
@@ -37,7 +39,6 @@ def getToken():
 def auth_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # TODO
         token = getToken()
         if not token:
             return {'message': "unauthorized!"}, 401  
@@ -49,6 +50,19 @@ def auth_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+DATETIME_ISO8601 = re.compile(
+    r'^([0-9]{4})' r'-' r'([0-9]{1,2})' r'-' r'([0-9]{1,2})' # date
+    r'([T\s][0-9]{1,2}:[0-9]{1,2}:?[0-9]{1,2}(\.[0-9]{1,6})?)?' # time
+    r'((\+[0-9]{2}:[0-9]{2})| UTC| utc)?' # zone
+)
+# check datetime
+def datetime_iso(string):
+    """ verify rule
+    Mandatory is: 'yyyy-(m)m-(d)dT(h)h:(m)m'        
+    """
+    string = string.strip()
+    return bool(re.fullmatch(DATETIME_ISO8601, string))
+
 class PushData(Resource):
 
     @auth_required
@@ -56,9 +70,8 @@ class PushData(Resource):
         try:
             data = request.get_json()     
             if type(data) != list:
-                return {'message': 'data is not list format!'}, 400
+                return {'message': 'data error!'}, 400
             path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", getToken())
-            print (path)
             if not os.path.exists(path):
                 f = open(path, "w+")
                 f.close()
@@ -85,6 +98,8 @@ class PushFileData(Resource):
     def post(self):
         try:
             path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", getToken())
+            if "file-data" not in request.files:
+                return {'message': "missing file-data!"}, 400 
             fileUpload = request.files['file-data']
             uniqueName = str(time.time()) + secure_filename(fileUpload.filename)
             fileUpload.save(os.path.join(os.path.dirname(os.path.abspath(__file__)), uniqueName))
@@ -125,29 +140,42 @@ class PushFileData(Resource):
 class GetData(Resource):
     @auth_required
     def get(self):
+        # parameters
         try:
             param = []
             args_param = request.args
+
             # start time to time now
-            if args_param.get('start-time') == None:
-                param_1 = None
-            else:
-                param_1 = {"key": "created_at", "values": [f"{args_param.get('start-time')}"], "operator": "gt"}
-                param.append(param_1)
+            if args_param.get('start-time') is None:
+                search_data = ''
+            else: 
+                if args_param.get('start-time') == '':
+                    return  {'message': "Error, incorrect date values"}, 400
+                if datetime_iso(args_param.get('start-time')) == True:
+                    param_1 = {"key": "created_at", "values": [f"{args_param.get('start-time')}"], "operator": "gt"}
+                    param.append(param_1)
+                else:
+                    return {'message': "Error, incorrect date values"}, 400
             
             # score >
-            if args_param.get('score') == None:
-                param = None
+            if args_param.get('score') is None:
+                search_data = ''
             else:
-                param_2 = {"key": "x_opencti_score", "values": [f"{args_param.get('score')}"], "operator": "gt"}
-                param.append(param_2)
+                if args_param.get('score') == '':
+                    return {'message': "Error, incorrect date values"}, 400
+                if args_param.get('score').isnumeric() == True:
+                    param_2 = {"key": "x_opencti_score", "values": [f"{args_param.get('score')}"], "operator": "gt"}
+                    param.append(param_2)
 
             # score <= 
-            if args_param.get('score_lte') == None:
-                param_3 = None
+            if args_param.get('score-lte') is None:
+                search_data = ''
             else:
-                param_3 = {"key": "x_opencti_score", "values": [f"{args_param.get('score-lte')}"], "operator": "lte"}
-                param.append(param_3)
+                if args_param.get('score-lte') == '':
+                    return {'message': "Error, incorrect date values"}, 400
+                if args_param.get('score-lte').isnumeric() == True:
+                    param_3 = {"key": "x_opencti_score", "values": [f"{args_param.get('score-lte')}"], "operator": "lte"}
+                    param.append(param_3)
             
             # search
             if args_param.get('search') == None:
@@ -155,7 +183,7 @@ class GetData(Resource):
             else:
                 search_data = args_param.get('search')
         except Exception as exp:
-            return  {'message': "failed!"}, 500  
+            return  {'message': "Error, incorrect date values"}, 4001   
 
         # Core data
         try:
@@ -172,29 +200,42 @@ class GetFileData(Resource):
 
     @auth_required
     def get(self):
+        # parameters
         try:
             param = []
             args_param = request.args
+
             # start time to time now
-            if args_param.get('start-time') == None:
-                param_1 = None
-            else:
-                param_1 = {"key": "created_at", "values": [f"{args_param.get('start-time')}"], "operator": "gt"}
-                param.append(param_1)
+            if args_param.get('start-time') is None:
+                search_data = ''
+            else: 
+                if args_param.get('start-time') == '':
+                    return  {'message': "Error, incorrect date values"}, 400
+                if datetime_iso(args_param.get('start-time')) == True:
+                    param_1 = {"key": "created_at", "values": [f"{args_param.get('start-time')}"], "operator": "gt"}
+                    param.append(param_1)
+                else:
+                    return {'message': "Error, incorrect date values"}, 400
             
             # score >
-            if args_param.get('score') == None:
-                param = None
+            if args_param.get('score') is None:
+                search_data = ''
             else:
-                param_2 = {"key": "x_opencti_score", "values": [f"{args_param.get('score')}"], "operator": "gt"}
-                param.append(param_2)
+                if args_param.get('score') == '':
+                    return {'message': "Error, incorrect date values"}, 400
+                if args_param.get('score').isnumeric() == True:
+                    param_2 = {"key": "x_opencti_score", "values": [f"{args_param.get('score')}"], "operator": "gt"}
+                    param.append(param_2)
 
             # score <= 
-            if args_param.get('score_lte') == None:
-                param_3 = None
+            if args_param.get('score-lte') is None:
+                search_data = ''
             else:
-                param_3 = {"key": "x_opencti_score", "values": [f"{args_param.get('score-lte')}"], "operator": "lte"}
-                param.append(param_3)
+                if args_param.get('score-lte') == '':
+                    return {'message': "Error, incorrect date values"}, 400
+                if args_param.get('score-lte').isnumeric() == True:
+                    param_3 = {"key": "x_opencti_score", "values": [f"{args_param.get('score-lte')}"], "operator": "lte"}
+                    param.append(param_3)
             
             # search
             if args_param.get('search') == None:
@@ -202,7 +243,7 @@ class GetFileData(Resource):
             else:
                 search_data = args_param.get('search')
         except Exception as exp:
-            return  {'message': "failed!"}, 401   
+            return  {'message': "Error, incorrect date values"}, 400   
 
         # Core data
         try:
